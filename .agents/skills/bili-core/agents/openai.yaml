@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bili Core"
+  short_description: "抓取并导出 Bilibili UP 主视频，筛选并下载音视频"
+  default_prompt: "Use $bili-core to fetch a Bilibili creator video list, filter it, and download the selected video or audio files."

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+downloads/
+*.log
+.DS_Store
+data/
+.playwright-mcp
+*-up-list.txt
