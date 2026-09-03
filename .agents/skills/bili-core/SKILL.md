@@ -47,7 +47,7 @@ Use the checked-out `bili-core` project as the execution engine. Translate the u
 ## Time contract
 
 - `created` 是 Bilibili 返回的 Unix 秒时间戳，`updatedAt` 和 CSV 的发布时间是 UTC ISO 8601；这些都是绝对时刻，不要改写成无时区的北京时间字符串。
-- `list` 的人类可见日期固定显示为 `Asia/Shanghai`。下游 fansite 合并脚本应原样保留 `created` 并按数值排序；06:00 归档只属于录播和切片，不适用于 B站视频。
+- `list` 的人类可见日期固定显示为 `Asia/Shanghai`。下游 fansite 合并脚本应原样保留 `created` 并按数值排序；页面统一转换为北京时间显示。
 - 修改时间转换后运行 `npm test` 和 `npm run test:time`；后者必须在 `Asia/Shanghai`、`UTC`、`America/New_York` 下得到一致结果。
 
 ## 输入、筛选与下载规则
