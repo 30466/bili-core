@@ -44,6 +44,12 @@ Use the checked-out `bili-core` project as the execution engine. Translate the u
 
 `collections[<id>]` 包含 `id`、`title`、`cover`、`intro`、`episodeCount` 和 `sections`。每个 section 有 `title` 与 `episodes`；episode 包含 `bvid`、`aid`、`cid`、`title`、`cover`、`duration` 和 `created`。合集 episode 是独立视频 BVID，不是分 P。导出会从 `ugc_season` 发现合集，并补抓空间列表中缺失的 episode；下载命令目前仍按单个 BVID/分 P 工作，没有整合集合下载命令。
 
+## Time contract
+
+- `created` 是 Bilibili 返回的 Unix 秒时间戳，`updatedAt` 和 CSV 的发布时间是 UTC ISO 8601；这些都是绝对时刻，不要改写成无时区的北京时间字符串。
+- `list` 的人类可见日期固定显示为 `Asia/Shanghai`。下游 fansite 合并脚本应原样保留 `created` 并按数值排序；06:00 归档只属于录播和切片，不适用于 B站视频。
+- 修改时间转换后运行 `npm test` 和 `npm run test:time`；后者必须在 `Asia/Shanghai`、`UTC`、`America/New_York` 下得到一致结果。
+
 ## 输入、筛选与下载规则
 
 - `export` 和 `sync` 生成的 JSON、CSV，以及用户提供的 JSON、CSV 或每行一个 BVID 的文本，都可以作为下载选择来源。读取 CSV 时必须使用标准 CSV 解析器，不能直接按逗号切分；JSON 视频选择使用 `Object.values(videos)`。

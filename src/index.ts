@@ -5,3 +5,8 @@ export { getVideoInfo, getPlayUrl, pickBestAudio, pickBestVideo } from './api/pl
 export { downloadFile, ensureFfmpeg, mergeStreams } from './downloader.js'
 export type { SpaceVideo } from './api/space.js'
 export type { DashStream, DashData, PlayUrlData, VideoInfo, CidInfo } from './api/playurl.js'
+export {
+  BEIJING_TIME_ZONE,
+  formatBeijingDateFromUnixSeconds,
+  utcIsoFromUnixSeconds,
+} from './time.js'

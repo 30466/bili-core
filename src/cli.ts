@@ -11,6 +11,7 @@ import { downloadFile, ensureFfmpeg, mergeStreams } from './downloader.js'
 import { exportUp, VideoEntry } from './export.js'
 import { ensureLogin } from './login.js'
 import { clearSessionCache } from './session.js'
+import { formatBeijingDateFromUnixSeconds, utcIsoFromUnixSeconds } from './time.js'
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -48,7 +49,7 @@ async function resolveUid(uidArg: string | undefined, nameOpt: string | undefine
 function generateCsv(videos: Record<string, VideoEntry>): string {
   const headers = ['bvid', 'aid', 'title', 'duration', 'created', 'view', 'like', 'coin', 'favorite', 'share', 'danmaku', 'reply', 'url']
   const rows = Object.values(videos).map(v => {
-    const d = new Date(v.created * 1000).toISOString()
+    const d = utcIsoFromUnixSeconds(v.created)
     return [v.bvid, v.aid, v.title, v.duration, d, v.stat.view, v.stat.like, v.stat.coin, v.stat.favorite, v.stat.share, v.stat.danmaku, v.stat.reply, `https://www.bilibili.com/video/${v.bvid}`].map(csvEscape).join(',')
   })
   return [headers.join(','), ...rows].join('\n') + '\n'
@@ -69,9 +70,9 @@ async function cmdList(uid: string | undefined, options: { json?: boolean; limit
 
   console.log(`共 ${videos.length} 个视频 (显示前 ${sliced.length} 个):\n`)
   for (const v of sliced) {
-    const date = new Date(v.created * 1000).toLocaleDateString('zh-CN')
+    const date = formatBeijingDateFromUnixSeconds(v.created) || '未知'
     console.log(`  ${v.bvid}  ${v.title}`)
-    console.log(`    播放: ${v.play}  时长: ${v.length}  日期: ${date}\n`)
+    console.log(`    播放: ${v.play}  时长: ${v.length}  日期: ${date}（北京时间）\n`)
   }
 }
 

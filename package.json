@@ -14,6 +14,8 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:time": "npm run build && TZ=Asia/Shanghai node --test test/time.test.mjs && TZ=UTC node --test test/time.test.mjs && TZ=America/New_York node --test test/time.test.mjs",
     "dev": "tsx src/cli.ts",
     "start": "node bin/bili.js",
     "get-cookie": "node scripts/get-cookie.mjs"

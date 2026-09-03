@@ -162,6 +162,15 @@ npx bili export --name "示例UP主"               # 按名称导出，跳过 lo
 
 `export` 分两步：先通过 Playwright 翻页获取全部视频列表（同 `list`），再逐个调用视频详情 API 获取完整 stat。详情接口返回合集（`ugc_season`）时，还会解析合集中的独立 BVID，并补抓空间列表中没有的合集视频。每次运行全量刷新，覆盖旧文件。864 个视频约需 32 秒。
 
+时间采用统一契约：JSON 中的 `created` 保留 Bilibili 返回的 Unix 秒时间戳，`updatedAt` 和 CSV 发布时间保留 UTC ISO 8601 绝对时刻；CLI 的人类可见发布日期固定转换为 `Asia/Shanghai`，不依赖运行电脑时区。下游合并程序应原样保留 `created` 并按数值排序；录播使用的 06:00 归档规则不适用于 B站视频。
+
+时间修改可用以下命令验证；`test:time` 会分别在 `Asia/Shanghai`、`UTC`、`America/New_York` 环境中运行：
+
+```bash
+npm test
+npm run test:time
+```
+
 **CSV 列含义：**
 
 | 列 | 含义 |
