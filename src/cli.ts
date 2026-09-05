@@ -241,6 +241,9 @@ async function cmdExport(uid: string | undefined, options: { concurrency?: strin
     onProgress: (current, total, bvid, title) => {
       process.stdout.write(`\r  进度: ${current}/${total}  ${bvid}  ${title?.slice(0, 30) ?? ''}`)
     },
+    onFailure: (bvid, title) => {
+      console.error(`\n  详情抓取失败: ${bvid}  ${title}`)
+    },
   })
   process.stdout.write('\n')
 
@@ -274,13 +277,20 @@ async function cmdSync(
   const concurrencyUp = options.concurrencyUp ? parseInt(options.concurrencyUp, 10) : 3
 
   const valid: { name: string; uid: number }[] = []
+  const failedNames: string[] = []
   for (const name of names) {
-    const uid = await lookupUp主(name)
-    if (uid) {
-      valid.push({ name, uid })
-      console.log(`  ✓ ${name} → UID ${uid}`)
-    } else {
-      console.warn(`  ✗ ${name} → 未找到，跳过`)
+    try {
+      const uid = await lookupUp主(name)
+      if (uid) {
+        valid.push({ name, uid })
+        console.log(`  ✓ ${name} → UID ${uid}`)
+      } else {
+        failedNames.push(name)
+        console.warn(`  ✗ ${name} → 未找到，跳过`)
+      }
+    } catch (err) {
+      failedNames.push(name)
+      console.warn(`  ✗ ${name} → 查找失败: ${(err as Error).message}`)
     }
   }
 
@@ -303,10 +313,16 @@ async function cmdSync(
         concurrency,
         delayMs,
         onProgress: (cur, total, bvid, title) => {
-          process.stdout.write(`\r  ${label}  进度: ${cur}/${total}  ${bvid}  ${title?.slice(0, 30) ?? ''}`)
+          // Several UP creators are exported concurrently. Emit occasional
+          // complete lines instead of competing carriage-return progress bars.
+          if (cur === total || cur % 50 === 0) {
+            console.log(`  ${label}  进度: ${cur}/${total}  ${bvid}  ${title?.slice(0, 30) ?? ''}`)
+          }
+        },
+        onFailure: (bvid, title) => {
+          console.error(`  ${label} 详情抓取失败: ${bvid}  ${title}`)
         },
       })
-      process.stdout.write('\n')
 
       const csvPath = path.join(path.resolve('data'), result.upName, `${entry.uid}.csv`)
       const csv = generateCsv(result.videos)
@@ -318,6 +334,7 @@ async function cmdSync(
       success++
     } catch (err) {
       console.error(`  ${label} ✗ 失败: ${(err as Error).message}\n`)
+      failedNames.push(entry.name)
       failed++
     }
   }
@@ -343,6 +360,9 @@ async function cmdSync(
   await Promise.all(workers)
 
   console.log(`同步完成！成功 ${success} 个 | 跳过 ${skipped} 个 | 失败 ${failed} 个`)
+  if (failedNames.length > 0) {
+    console.log(`失败的 UP 主: ${failedNames.join('、')}`)
+  }
 }
 
 async function cmdLookup(keyword: string) {

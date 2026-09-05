@@ -74,7 +74,7 @@ async function scrapeCore(uid: number): Promise<{ upName: string; videos: SpaceV
       const nextBtn = page.getByRole('button', { name: '下一页' })
       const visible = await nextBtn.isVisible().catch(() => false)
       if (!visible) {
-        process.stderr.write(`\n  按钮不可见(第${pn}页), 当前共${allVideos.length}个\n`)
+        process.stderr.write(`  按钮不可见(第${pn}页), 当前共${allVideos.length}个\n`)
         break
       }
       await nextBtn.click()
@@ -85,13 +85,15 @@ async function scrapeCore(uid: number): Promise<{ upName: string; videos: SpaceV
         if (pendingPn === 0) break
       }
       if (pendingPn !== 0) {
-        process.stderr.write(`\n  第${pn}页超时, 当前共${allVideos.length}个\n`)
+        process.stderr.write(`  第${pn}页超时, 当前共${allVideos.length}个\n`)
         break
       }
-      process.stderr.write(`\r  第 ${pn}/${totalPages} 页 (${allVideos.length}/${totalCount})`)
+      // Page scraping can run concurrently for several UP creators during
+      // `sync`; use complete lines so their output cannot leave stale suffixes.
+      process.stderr.write(`  第 ${pn}/${totalPages} 页 (${allVideos.length}/${totalCount})\n`)
     }
 
-    process.stderr.write(`\n  完成: ${allVideos.length} 个视频\n`)
+    process.stderr.write(`  完成: ${allVideos.length} 个视频\n`)
     return { upName, videos: allVideos }
   } finally {
     await browser.close()

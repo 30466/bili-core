@@ -239,6 +239,7 @@ export interface ExportOptions {
   concurrency?: number
   delayMs?: number
   onProgress?: (current: number, total: number, bvid: string, title: string) => void
+  onFailure?: (bvid: string, title: string) => void
 }
 
 export async function exportUp(
@@ -251,10 +252,9 @@ export async function exportUp(
 
   console.log(`获取 UP 主 ${uid} 的视频列表...`)
   const { upName, videos: spaceVideos } = await listAllVideos(uid)
-  const totalVideos = spaceVideos.length
+  const allBvids = [...new Set(spaceVideos.map(v => v.bvid))]
+  const totalVideos = allBvids.length
   console.log(`共 ${totalVideos} 个视频`)
-
-  const allBvids = spaceVideos.map(v => v.bvid)
 
   const videos: Record<string, VideoEntry> = {}
   const collections: Record<string, CollectionInfo> = {}
@@ -277,6 +277,10 @@ export async function exportUp(
       videos[bvid] = result.entry
       rememberCollection(result.collection)
     }
+    else {
+      const v = spaceVideos.find(v => v.bvid === bvid)
+      options.onFailure?.(bvid, v?.title ?? '')
+    }
     completed++
     const v = spaceVideos.find(v => v.bvid === bvid)
     onProgress(completed, progressTotal, bvid, v?.title ?? '')
@@ -284,7 +288,10 @@ export async function exportUp(
 
   for (let i = 0; i < allBvids.length; i += concurrency) {
     const chunk = allBvids.slice(i, i + concurrency)
-    await Promise.all(chunk.map(processBvid))
+    // Pass only the BVID. Array#map would otherwise pass the chunk index as
+    // processBvid's second argument (`progressTotal`), producing output such
+    // as 144/12 instead of 144/310.
+    await Promise.all(chunk.map(bvid => processBvid(bvid)))
     if (i + concurrency < allBvids.length) {
       await sleep(delayMs)
     }
