@@ -1,6 +1,6 @@
 # bili-core
 
-Bilibili UP 主视频列表抓取、元数据导出与音视频下载 CLI 工具。工作流程分为两部分：先按 UP 主 UID 或名称抓取账号全部视频，并导出包含分 P、统计数据和合集信息的 JSON + CSV；再根据登录账号具备的权限下载所选视频或音频，大会员账号可获取 Hi-Res FLAC、Dolby Atmos、4K/8K 等高质量 DASH 流。
+Bilibili UP 主视频列表抓取、元数据导出与音视频下载 CLI 工具。工作流程分为两部分：先按 UP 主 UID 或名称抓取账号全部视频，导出包含分 P、统计数据和合集信息的完整 JSON，以及便于表格筛选的简版 CSV；再根据登录账号具备的权限下载所选视频或音频，大会员账号可获取 Hi-Res FLAC、Dolby Atmos、4K/8K 等高质量 DASH 流。
 
 ## 功能
 
@@ -110,6 +110,65 @@ npx bili list --name "示例UP主" --limit 10       # 直接按名称查找，�
 
 视频列表通过 Playwright 浏览器抓取 `x/space/wbi/arc/search` 接口获取。终端预览仅显示标题、播放量、时长等基本信息，完整元数据（点赞、投币、收藏等）请使用 `export` 命令导出。
 
+#### 空间投稿页、本人/访客视角与合集补全
+
+第一步抓取访问的是 UP 主个人空间的**投稿页面**：
+
+```text
+https://space.bilibili.com/{UID}/upload/video
+```
+
+项目监听该页面发出的 `x/space/wbi/arc/search` 响应并自动翻页，获取页面当前返回的 BVID。Bilibili 对同一批合集视频存在两种展示方式：
+
+- 本人查看自己的投稿页时，多个独立投稿可能折叠成一张合集卡片；下图中的“运筹学”等卡片右下角显示合集数量。
+- 登录账号查看其他 UP 主时，合集中的独立 BVID 可能全部平铺在“TA 的视频”中。
+- 这只是空间页面的展示差异。合集中的 episode 仍是不同 BVID；多 P 才是同一个 BVID 下的多个 `pages`。
+
+本人视角，合集被折叠显示：
+
+<img src="docs/images/bilibili-space-owner-collections-collapsed.png" alt="本人视角的 Bilibili 投稿页，合集折叠为一张卡片" width="900">
+
+访客视角，合集 episode 作为独立投稿平铺显示：
+
+<img src="docs/images/bilibili-space-visitor-episodes-expanded.png" alt="访客视角的 Bilibili 投稿页，合集视频逐条显示" width="900">
+
+视频播放页仍会显示其合集归属与合集内其他独立视频：
+
+<img src="docs/images/bilibili-collection-player.png" alt="Bilibili 播放页右侧显示合集及其中的独立视频" width="900">
+
+上面前两张图就是 Playwright 实际访问的空间投稿页示例。浏览器以无头模式运行，所以运行时不会弹出窗口；截图用于解释 Bilibili 页面在本人视角和访客视角下可能出现的不同形态，不参与数据解析。项目不会靠识别卡片图片、角标或页面文字来推断合集。
+
+#### 实现流程：浏览器抓入口，详情接口补全结构
+
+```mermaid
+flowchart TD
+    A[export / sync 接收 UP 主 UID] --> B[Playwright 启动无头 Chromium 并注入登录 Cookie]
+    B --> C[访问 /{UID}/upload/video 投稿页]
+    C --> D[监听 arc/search 响应并点击“下一页”]
+    D --> E[得到空间当前视角返回的初始 BVID 列表]
+    E --> F[逐个请求 x/web-interface/view?bvid=...]
+    F --> G[读取 pages：补全同一 BVID 的 P1 到 PN]
+    F --> H[读取 ugc_season.sections.episodes：补全合集结构]
+    H --> I{episode BVID 是否已在 videos 中}
+    I -- 是 --> J[写入合集 ID、名称、顺序和总数]
+    I -- 否 --> K[再请求该 episode 的 view 详情]
+    K --> J
+    G --> L[写入每个分 P 的 CID 和原始标题]
+    J --> M[生成完整 JSON]
+    L --> M
+    M --> N[从 JSON 视频记录生成平铺 CSV 摘要]
+```
+
+具体分为三部分：
+
+1. **空间入口使用浏览器自动化。** `src/scraper.ts` 启动 Playwright Chromium、注入项目 Cookie、访问 `https://space.bilibili.com/{UID}/upload/video`，监听页面发出的 `x/space/wbi/arc/search` 响应，并点击“下一页”直到空间接口声明的最后一页。这里得到的是当前登录账号所见视角下的初始 BVID 列表和 UP 主昵称。
+2. **单独视频的多 P 使用详情接口补全，不使用浏览器自动化。** `src/export.ts` 对每个 BVID 直接请求 `x/web-interface/view?bvid={BVID}`。响应中的 `pages[]` 已包含该视频全部分 P；项目按接口数组顺序保存每项的 `cid` 和 `part`，数组下标 `0` 对应 P1，`1` 对应 P2。因而无需尝试 `?p=2、3、4...` 直到报错，也不会受多 P 未显示在空间主页的影响。
+3. **本人视角中被折叠的合集视频也使用详情接口补全。** 任一合集 episode 的详情响应会携带 `ugc_season`。项目解析 `sections[].episodes[]` 得到合集中的全部独立 BVID、分组和顺序，然后把空间初始列表中缺少的 episode BVID 再次送入 `x/web-interface/view` 获取完整详情。若同一合集在不同响应中完整度不同，会保留 episode 最多的一份；个别补抓详情连续失败时，仍会用 `ugc_season` 中的 episode 摘要建立兜底记录，避免静默漏项。最后统一为每个 episode 写入 `collection.id/title/index/total`。
+
+因此，浏览器自动化只解决“如何可靠进入空间投稿页并拿到一批起始 BVID”；多 P 数量、分 P 标题、合集成员和本人视角下被折叠的独立视频，都来自结构化接口响应。`list` 只反映第一步空间投稿接口直接返回的列表，因此数量可能受本人/访客展示方式影响；`export` 和 `sync` 才会执行完整补全。
+
+截至 2026-09-05 的本项目实测：同一登录账号查看自己的投稿页时，`list` 返回 15 个条目，而 `export` 最终得到 25 个视频记录；其中 5 个合集包含 20 个不重复 episode，最终缺失数为 0。“tt大王放映室丨谭思慧”的访客视角平铺 129 个投稿，导出后对应两个合集（119 + 10 个 episode），同样 129 个全部写入。因此两种视角会在完整导出阶段归一为相同的“独立视频 + 合集归属 + 分 P”数据结构。
+
 ### 4. 查看视频信息
 
 ```bash
@@ -139,6 +198,42 @@ npx bili download BV1nJBLBuEWQ --audio
 npx bili download BV1nJBLBuEWQ --page 2
 ```
 
+#### 普通视频、多 P 与合集的链接和目录关系
+
+多 P 使用同一个 BVID，URL 仅通过 `p` 参数指定第几个分 P：
+
+```text
+https://www.bilibili.com/video/BV1ak4X6BEeh       # 同一个视频，默认 P1
+https://www.bilibili.com/video/BV1ak4X6BEeh?p=2   # 同一个视频的 P2
+https://www.bilibili.com/video/BV1ak4X6BEeh?p=3   # 同一个视频的 P3
+```
+
+对应 CLI：
+
+```bash
+npx bili download BV1ak4X6BEeh --page 2
+npx bili download BV1ak4X6BEeh --page 3
+```
+
+合集则由多个独立 BVID 组成；合集里的任意一个独立视频还可以再次包含多个分 P。项目 Skill/Agent 在下载完整多 P 视频或合集时，按以下层级整理现有单视频命令产生的文件：
+
+```text
+downloads/{UP主名称}/
+├── {不属于合集的普通单P视频标题}.{ext}
+├── {不属于合集的多P视频标题}/
+│   ├── {P1原始标题}.{ext}
+│   ├── {P2原始标题}.{ext}
+│   └── ...
+└── {合集标题}/
+    ├── {合集内普通单P视频标题}.{ext}
+    └── {合集内多P视频标题}/
+        ├── {P1原始标题}.{ext}
+        ├── {P2原始标题}.{ext}
+        └── ...
+```
+
+CLI 的一次 `download` 仍只处理一个 BVID 的一个分 P；整个多 P 或合集由使用者或 Agent 根据 JSON 选择并重复调用，不额外绑定一个固定的批量下载脚本。
+
 **批量下载 UP 主视频：**
 
 ```bash
@@ -160,7 +255,9 @@ npx bili export <UID> --delay 100                # 每批间隔毫秒（默认 5
 npx bili export --name "示例UP主"               # 按名称导出，跳过 lookup
 ```
 
-`export` 分两步：先通过 Playwright 翻页获取全部视频列表（同 `list`），再逐个调用视频详情 API 获取完整 stat。详情接口返回合集（`ugc_season`）时，还会解析合集中的独立 BVID，并补抓空间列表中没有的合集视频。每次运行全量刷新，覆盖旧文件。864 个视频约需 32 秒。
+`export` 是“抓取并导出一个 UP 主完整元数据”的命令，不是下载目录整理功能。它先通过 Playwright 翻页获取空间初始视频列表（同 `list`），再逐个调用视频详情 API 获取 stat、`pages` 和 `ugc_season`，并补抓空间列表中没有的合集 episode。`exportUp()` 将完整结构写入 `data/{upName}/{uid}.json`，CLI 随后由同一批内存数据生成 `data/{upName}/{uid}.csv`。每次运行都会全量刷新并覆盖这两个旧文件；不会修改 `downloads/` 下的媒体文件。
+
+本次 CSV 调整只是把 CSV 生成函数集中到 `src/export.ts`，并加入 `page_count` 与合集摘要列，便于测试和复用；JSON 的合集/多 P 补全流程、`data/{upName}/` 输出路径以及下载目录规则没有因此改变。864 个视频约需 32 秒。
 
 时间采用统一契约：JSON 中的 `created` 保留 Bilibili 返回的 Unix 秒时间戳，`updatedAt` 和 CSV 发布时间保留 UTC ISO 8601 绝对时刻；CLI 的人类可见发布日期固定转换为 `Asia/Shanghai`，不依赖运行电脑时区。下游合并程序应原样保留 `created` 并按数值排序。
 
@@ -170,6 +267,30 @@ npx bili export --name "示例UP主"               # 按名称导出，跳过 lo
 npm test
 npm run test:time
 ```
+
+#### 测试目录与提交策略
+
+`test/` 是项目源码的一部分，应与代码一起提交和上传，不应加入 `.gitignore`。它保存可重复执行的行为约束，和会被重新生成、默认忽略的 `data/`、`downloads/`、`dist/` 不同。
+
+当前测试内容：
+
+| 测试文件 | 测试项 | 作用 |
+|----------|--------|------|
+| `test/time.test.mjs` | Bilibili Unix 秒时间戳固定转换为北京时间日期 | 使用跨日边界样例验证 `2026-08-28T16:30:00Z` 在北京时间应显示为 `2026-08-29`，避免程序跟随运行电脑的本地时区而把发布日期显示成前一天或后一天 |
+| `test/time.test.mjs` | UTC ISO 时间保持绝对时刻 | 验证 CSV 使用 `2026-08-28T16:30:00.000Z`，避免把 UTC 数据误写成没有时区含义的本地时间 |
+| `test/time.test.mjs` | 无效时间处理 | 验证 `0` 和 `NaN` 输出空字符串，避免缺失发布时间被伪装成 `1970-01-01` |
+| `test/export-csv.test.mjs` | CSV 简表结构 | 验证表头、单 P 的 `page_count=1`、多 P 的数量以及合集 ID、名称、顺序和总数都写入正确列 |
+| `test/export-csv.test.mjs` | CSV 特殊字符转义 | 验证标题或合集名称中的逗号、双引号和换行符合标准 CSV 转义，避免 Excel、Numbers 或解析脚本发生错列 |
+
+时间测试对本项目有实际作用。Bilibili 的 `created` 是 Unix 秒时间戳，本身代表唯一绝对时刻；但 CLI 需要显示北京时间日期，CSV 又需要保存 UTC ISO 时间。如果直接使用电脑默认时区，同一份导出在澳门、UTC 或美国环境运行时可能显示不同日期。`npm run test:time` 会把同一组测试分别放在 `Asia/Shanghai`、`UTC` 和 `America/New_York` 三种系统时区下执行，确认结果不受运行环境影响。
+
+提交前不要求把所有真实网络功能完整跑一遍。建议按风险分层：
+
+- 默认执行 `npm test`，运行上表中的时间与 CSV 测试。测试数据使用 `BVsingle`、`BVmulti` 等虚构记录，不包含真实 UP 主、UID、Cookie 或 `data/` 导出内容，也不会向 Bilibili 发起请求。
+- Playwright 登录、Bilibili 实时接口和真实媒体下载依赖账号、Cookie、网络及站点状态，适合作为发布前或相关代码变更后的人工冒烟测试，不建议放进每次默认测试，否则容易因外部环境产生偶发失败。
+- 合集与多 P 的批量下载、目录整理和完成后核验由 Agent 按项目 Skill 编排，不是 core 中一个固定批量函数，因此不为这套可变流程额外添加单元测试。只有将来把它实现为正式的 core 函数或 CLI 命令时，才应同时增加对应测试。
+
+当前规模下保留这两个测试文件即可，不需要为了追求测试数量给 Agent 流程或第三方接口写过度测试。修改时间或 CSV 时运行默认测试；涉及抓取、登录或下载链路的代码变更时，再增加一次小规模真实冒烟验证。
 
 **CSV 列含义：**
 
@@ -187,7 +308,23 @@ npm run test:time
 | `share` | 分享数 |
 | `danmaku` | 弹幕数 |
 | `reply` | 评论数 |
+| `page_count` | 分 P 数量；`1` 表示普通单 P 视频，`>1` 表示多 P 视频 |
+| `collection_id` | 所属合集 ID；不属于合集时为空 |
+| `collection_title` | 所属合集名称；不属于合集时为空 |
+| `collection_index` | 当前独立视频在合集中的顺序，从 1 开始；不属于合集时为空 |
+| `collection_total` | 合集包含的独立视频总数；不属于合集时为空 |
 | `url` | 视频链接 |
+
+CSV 定位为便于 Excel、Numbers 或脚本快速排序和筛选的**简版视频表**。它可以判断某行是否为多 P、是否属于合集以及在合集中的位置，但不展开每个分 P 的标题/CID，也不重复保存合集 sections、简介、封面等嵌套结构；需要精确选择某个分 P、重建下载目录或读取完整合集结构时使用 JSON。旧 CSV 不会自动增加新列，重新运行 `export` 或 `sync` 后生成新版字段。
+
+结构列示例：
+
+| `bvid` | `page_count` | `collection_title` | `collection_index` | `collection_total` | 判定 |
+|--------|--------------|--------------------|--------------------|--------------------|------|
+| `BV13ZdfYeEmZ` | 1 |  |  |  | 不属于合集的普通单 P 视频 |
+| `BV1ACwLe2Ee3` | 102 |  |  |  | 不属于合集的多 P 视频 |
+| `BV1GQty6WE2a` | 1 | 26年直播回放 | 119 | 119 | 合集内普通单 P 视频 |
+| `BV1zyuk61E9r` | 95 | 唱歌切片 | 9 | 10 | 合集内多 P 视频 |
 
 导出的 JSON 结构如下：
 
@@ -261,8 +398,8 @@ npm run test:time
 | `tid` | number | Bilibili 分区 ID |
 | `tname` | string | Bilibili 分区名称 |
 | `stat` | object | 视频统计数据，字段见下表 |
-| `cid` | number | 默认播放分 P 的 CID |
-| `pages` | array | 分 P 列表；同一个 BVID 的多个 P 都在这里 |
+| `cid` | number | 默认播放分 P 的 CID，通常对应 P1 |
+| `pages` | array | 分 P 列表；数组顺序就是 P1 到 PN，同一个 BVID 的多个 P 都在这里 |
 | `collection` | object（可选） | 所属合集的简要信息；不属于合集时省略 |
 
 `stat` 统计字段：
@@ -284,6 +421,8 @@ npm run test:time
 | `cid` | number | 该分 P 的 CID，下载该 P 时使用 |
 | `part` | string | 该分 P 的标题 |
 
+`pages[0]` 对应 P1，`pages[1]` 对应 P2，以此类推。普通单 P 视频也会有一个 `pages[0]`；判断是否为多 P 应检查 `pages.length > 1`，不能根据主页卡片数量判断。
+
 `collection` 中每项字段：
 
 | 字段 | 类型 | 含义 |
@@ -304,9 +443,96 @@ npm run test:time
 | `episodeCount` | number | Bilibili 返回的合集视频数 |
 | `sections` | array | 合集分组列表 |
 
-`sections` 中每项有 `title`（分组名称）和 `episodes`（合集视频列表）。`episodes` 中每个视频字段为 `bvid`、`aid`、`cid`、`title`、`cover`、`duration`、`created`，含义分别与视频字段中的同名字段相同。合集中的每个 episode 都是独立视频 BVID，不是同一个视频的分 P。
+`sections` 中每项字段：
 
-需要注意：当前 JSON 导出支持合集元数据；CSV 仍是平铺字段，不包含合集列。`download <bvid> --page <N>` 仍然下载一个独立 BVID 的某个分 P，尚未提供“一次下载整个合集”的 CLI 命令。
+| 字段 | 类型 | 含义 |
+|------|------|------|
+| `title` | string | 合集分组名称，例如“正片”或按月份划分的分组 |
+| `episodes` | array | 该分组中的独立视频列表 |
+
+`episodes` 中每个独立视频字段：
+
+| 字段 | 类型 | 含义 |
+|------|------|------|
+| `bvid` | string | 该 episode 的独立 BVID |
+| `aid` | number | 该 episode 的 AID |
+| `cid` | number | 该 episode 默认播放页的 CID |
+| `title` | string | 独立视频标题 |
+| `cover` | string | 独立视频封面 URL |
+| `duration` | number | 独立视频时长，单位为秒 |
+| `created` | number | 发布时间，Unix 时间戳（秒） |
+
+合集中的每个 episode 都是独立视频 BVID，不是同一个视频的分 P。完整视频详情以顶层 `videos[episode.bvid]` 为准；`collections[].sections[].episodes[]` 用于表达合集结构和顺序。
+
+#### JSON 结构判定示例
+
+以下示例来自本项目的实际导出数据。为便于阅读，多 P 示例只展示数组开头几项。
+
+普通单 P 视频：没有 `collection`，且 `pages.length === 1`。
+
+```json
+{
+  "bvid": "BV13ZdfYeEmZ",
+  "title": "傅里叶变换学习指导",
+  "pages": [
+    { "cid": 29447685362, "part": "傅里叶变换学习指导" }
+  ]
+}
+```
+
+不属于合集的多 P 视频：仍只有一个 BVID，但 `pages` 中有多个项目。下例实际为 102 P。
+
+```json
+{
+  "bvid": "BV1ACwLe2Ee3",
+  "title": "【谭思慧】全网最完整2024年抖音合集（含CGT48官抖相关）",
+  "pages": [
+    { "cid": 27907391554, "part": "0106" },
+    { "cid": 27907391596, "part": "0107江南style" },
+    { "cid": 27907391830, "part": "0111一两相思一两愁" }
+  ]
+}
+```
+
+属于合集的普通单 P 视频：有 `collection`，但 `pages.length === 1`。它是合集中的一个独立 BVID。
+
+```json
+{
+  "bvid": "BV1GQty6WE2a",
+  "title": "20260904直播回放｜谭思慧",
+  "pages": [
+    { "cid": 41600025608, "part": "SNH48-谭思慧9月4日的直播MSG48" }
+  ],
+  "collection": {
+    "id": 8788627,
+    "title": "26年直播回放",
+    "index": 119,
+    "total": 119
+  }
+}
+```
+
+属于合集的多 P 视频：该 BVID 同时有 `collection` 和多个 `pages`；它在合集里是一个独立 episode，内部再分成多个 P。下例实际为 95 P。
+
+```json
+{
+  "bvid": "BV1zyuk61E9r",
+  "title": "CGT48谭思慧 2026年7月直播唱歌切片合集",
+  "pages": [
+    { "cid": 40824734727, "part": "2017，你。_2026-07-01~00.34.52" },
+    { "cid": 40824734938, "part": "花香_2026-07-01~00.34.52" },
+    { "cid": 40824735110, "part": "神奇的糊涂魔药_2026-07-01~00.34.52" }
+  ],
+  "collection": {
+    "id": 8807403,
+    "title": "唱歌切片",
+    "index": 9,
+    "total": 10
+  }
+}
+```
+
+需要注意：JSON 是完整结构化数据；CSV 是平铺简表，只保留 `page_count` 和合集摘要列。`download <bvid> --page <N>` 仍然下载一个独立 BVID 的某个分 P，尚未提供“一次下载整个合集”的 CLI 命令。
 
 ### 7. 按关键词批量下载脚本
 
@@ -385,6 +611,10 @@ src/
 scripts/
 ├── get-cookie.mjs     # Playwright 浏览器登录 + Cookie 自动提取
 └── download-artist.mjs # 按关键词批量下载音频（需先 build + export）
+
+test/
+├── export-csv.test.mjs # CSV 结构列与转义测试
+└── time.test.mjs       # 时间格式与跨时区一致性测试
 
 bin/
 └── bili.js            # CLI 入口脚本（加载 dist/cli.js）

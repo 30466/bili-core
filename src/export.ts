@@ -2,6 +2,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { client } from './api/client.js'
 import { listAllVideos } from './api/space.js'
+import { utcIsoFromUnixSeconds } from './time.js'
 
 export interface VideoStat {
   view: number
@@ -74,6 +75,34 @@ export interface UpData {
   videos: Record<string, VideoEntry>
   /** Collections discovered while fetching the individual video details. */
   collections: Record<string, CollectionInfo>
+}
+
+function csvEscape(value: unknown): string {
+  if (value === undefined || value === null) return ''
+  const text = String(value)
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
+}
+
+/** Flat, spreadsheet-friendly summary. Nested page and collection details remain in JSON. */
+export function generateCsv(videos: Record<string, VideoEntry>): string {
+  const headers = [
+    'bvid', 'aid', 'title', 'duration', 'created',
+    'view', 'like', 'coin', 'favorite', 'share', 'danmaku', 'reply',
+    'page_count', 'collection_id', 'collection_title', 'collection_index', 'collection_total',
+    'url',
+  ]
+  const rows = Object.values(videos).map(v => {
+    const created = utcIsoFromUnixSeconds(v.created)
+    const pages = Array.isArray(v.pages) ? v.pages : []
+    const collection = v.collection
+    return [
+      v.bvid, v.aid, v.title, v.duration, created,
+      v.stat.view, v.stat.like, v.stat.coin, v.stat.favorite, v.stat.share, v.stat.danmaku, v.stat.reply,
+      pages.length, collection?.id, collection?.title, collection?.index, collection?.total,
+      `https://www.bilibili.com/video/${v.bvid}`,
+    ].map(csvEscape).join(',')
+  })
+  return [headers.join(','), ...rows].join('\n') + '\n'
 }
 
 const DATA_DIR = path.resolve(process.cwd(), 'data')

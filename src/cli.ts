@@ -8,21 +8,15 @@ import { getVideoInfo, getPlayUrl, pickBestAudio, pickBestVideo, getAudioExt, ge
 import { checkLogin, clearLoginCache } from './api/client.js'
 import { searchUp主, lookupUp主 } from './api/search.js'
 import { downloadFile, ensureFfmpeg, mergeStreams } from './downloader.js'
-import { exportUp, VideoEntry } from './export.js'
+import { exportUp, generateCsv } from './export.js'
 import { ensureLogin } from './login.js'
 import { clearSessionCache } from './session.js'
-import { formatBeijingDateFromUnixSeconds, utcIsoFromUnixSeconds } from './time.js'
+import { formatBeijingDateFromUnixSeconds } from './time.js'
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60)
   const s = seconds % 60
   return `${m}:${String(s).padStart(2, '0')}`
-}
-
-function csvEscape(value: unknown): string {
-  if (value === undefined || value === null) return ''
-  const text = String(value)
-  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
 }
 
 async function resolveUid(uidArg: string | undefined, nameOpt: string | undefined): Promise<number> {
@@ -44,15 +38,6 @@ async function resolveUid(uidArg: string | undefined, nameOpt: string | undefine
     return uidNum
   }
   throw new Error('请提供 UID 参数或 --name 选项')
-}
-
-function generateCsv(videos: Record<string, VideoEntry>): string {
-  const headers = ['bvid', 'aid', 'title', 'duration', 'created', 'view', 'like', 'coin', 'favorite', 'share', 'danmaku', 'reply', 'url']
-  const rows = Object.values(videos).map(v => {
-    const d = utcIsoFromUnixSeconds(v.created)
-    return [v.bvid, v.aid, v.title, v.duration, d, v.stat.view, v.stat.like, v.stat.coin, v.stat.favorite, v.stat.share, v.stat.danmaku, v.stat.reply, `https://www.bilibili.com/video/${v.bvid}`].map(csvEscape).join(',')
-  })
-  return [headers.join(','), ...rows].join('\n') + '\n'
 }
 
 async function cmdList(uid: string | undefined, options: { json?: boolean; limit?: string; name?: string }) {
