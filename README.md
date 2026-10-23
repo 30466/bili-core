@@ -255,7 +255,7 @@ npx bili export <UID> --delay 100                # 每批间隔毫秒（默认 5
 npx bili export --name "示例UP主"               # 按名称导出，跳过 lookup
 ```
 
-`export` 是“抓取并导出一个 UP 主完整元数据”的命令，不是下载目录整理功能。它先通过 Playwright 翻页获取空间初始视频列表（同 `list`），再逐个调用视频详情 API 获取 stat、`pages` 和 `ugc_season`，并补抓空间列表中没有的合集 episode。`exportUp()` 将完整结构写入 `data/{upName}/{uid}.json`，CLI 随后由同一批内存数据生成 `data/{upName}/{uid}.csv`。每次运行都会全量刷新并覆盖这两个旧文件；不会修改 `downloads/` 下的媒体文件。
+`export` 是“抓取并导出一个 UP 主完整元数据”的命令，不是下载目录整理功能。它先通过 Playwright 翻页获取空间初始视频列表（同 `list`），再逐个调用视频详情 API 获取 stat、`pages` 和 `ugc_season`，并补抓空间列表中没有的合集 episode。`exportUp()` 将同一批完整数据保存为 `data/{upName}/{uid}_{保存时间}.json` 和 `.csv`。保存时间固定为北京时间，格式为 `YYYYMMDD_HHmmss_SSS`（毫秒）；同一批 JSON/CSV 使用相同文件名主体，重名时追加序号。每次运行全量抓取并新增一份快照，保留旧文件，便于新旧对比。
 
 本次 CSV 调整只是把 CSV 生成函数集中到 `src/export.ts`，并加入 `page_count` 与合集摘要列，便于测试和复用；JSON 的合集/多 P 补全流程、`data/{upName}/` 输出路径以及下载目录规则没有因此改变。864 个视频约需 32 秒。
 
@@ -619,7 +619,7 @@ test/
 bin/
 └── bili.js            # CLI 入口脚本（加载 dist/cli.js）
 
-data/                  # 导出的元数据（data/{upName}/{uid}.json + {uid}.csv）
+data/                  # 导出的元数据（data/{upName}/{uid}_{保存时间}.json + .csv）
 downloads/             # 下载文件输出目录（downloads/{ownerName}/）
 ```
 

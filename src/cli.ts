@@ -8,7 +8,7 @@ import { getVideoInfo, getPlayUrl, pickBestAudio, pickBestVideo, getAudioExt, ge
 import { checkLogin, clearLoginCache } from './api/client.js'
 import { searchUp主, lookupUp主 } from './api/search.js'
 import { downloadFile, ensureFfmpeg, mergeStreams } from './downloader.js'
-import { exportUp, generateCsv } from './export.js'
+import { exportUp } from './export.js'
 import { ensureLogin } from './login.js'
 import { clearSessionCache } from './session.js'
 import { formatBeijingDateFromUnixSeconds } from './time.js'
@@ -234,7 +234,7 @@ async function cmdExport(uid: string | undefined, options: { concurrency?: strin
   const concurrency = options.concurrency ? parseInt(options.concurrency, 10) : 20
   const delayMs = options.delay ? parseInt(options.delay, 10) : 50
 
-  const result = await exportUp({
+  await exportUp({
     uid: uidNum,
     concurrency,
     delayMs,
@@ -247,11 +247,6 @@ async function cmdExport(uid: string | undefined, options: { concurrency?: strin
   })
   process.stdout.write('\n')
 
-  const csvPath = path.join(path.resolve('data'), result.upName, `${uidNum}.csv`)
-  const csv = generateCsv(result.videos)
-  await fsp.mkdir(path.dirname(csvPath), { recursive: true })
-  await fsp.writeFile(csvPath, csv)
-  console.log(`CSV 已保存: ${csvPath}`)
   console.log('导出完成')
 }
 
@@ -323,11 +318,6 @@ async function cmdSync(
           console.error(`  ${label} 详情抓取失败: ${bvid}  ${title}`)
         },
       })
-
-      const csvPath = path.join(path.resolve('data'), result.upName, `${entry.uid}.csv`)
-      const csv = generateCsv(result.videos)
-      await fsp.mkdir(path.dirname(csvPath), { recursive: true })
-      await fsp.writeFile(csvPath, csv)
 
       const count = Object.keys(result.videos).length
       console.log(`  ${label} ✓ (${count} 个视频)\n`)

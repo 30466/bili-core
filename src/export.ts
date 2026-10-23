@@ -1,5 +1,6 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
+import { reserveSnapshotPaths } from './snapshot.js'
 import { client } from './api/client.js'
 import { listAllVideos } from './api/space.js'
 import { utcIsoFromUnixSeconds } from './time.js'
@@ -117,10 +118,6 @@ async function ensureDir(dir: string) {
 
 function upDir(upName: string) {
   return path.join(DATA_DIR, upName)
-}
-
-function dataPath(upName: string, uid: number) {
-  return path.join(upDir(upName), `${uid}.json`)
 }
 
 interface FetchResult {
@@ -354,10 +351,11 @@ export async function exportUp(
     collections,
   }
 
-  const fp = dataPath(upName, uid)
-  await ensureDir(path.dirname(fp))
-  await fsp.writeFile(fp, JSON.stringify(result, null, 2), 'utf-8')
-  console.log(`已保存: ${fp} (${Object.keys(videos).length} 个视频)`)
+  const { jsonPath, csvPath } = await reserveSnapshotPaths(upDir(upName), String(uid), updatedAt)
+  await fsp.writeFile(jsonPath, JSON.stringify(result, null, 2), 'utf-8')
+  await fsp.writeFile(csvPath, generateCsv(videos), 'utf-8')
+  console.log(`已保存: ${jsonPath} (${Object.keys(videos).length} 个视频)`)
+  console.log(`CSV 已保存: ${csvPath}`)
 
   return result
 }
