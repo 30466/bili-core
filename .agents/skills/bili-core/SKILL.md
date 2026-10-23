@@ -23,9 +23,10 @@ Use the checked-out `bili-core` project as the execution engine. Translate the u
 - **批量同步白名单**：`sync <file>` 根据白名单文件批量导出多个 UP 主视频元数据。白名单每行一个 UP 主名称（`#` 开头为注释）。支持 `--concurrency <N>`、`--delay <N>`、`--concurrency-up <N>` 参数控制并发。
 - **后备**：仍可用 `lookup <keyword>` 先查 UID 再传入 `<uid>` 参数。精确匹配返回 UID，模糊匹配列出候选。
 - Preview a UP creator's videos with `list <uid>` and an explicit `--limit`. Can use `--name <name>` instead of `<uid>` to resolve by name automatically.
-- Save the complete structured list (JSON + CSV) with `export <uid>`. Can use `--name <name>` instead of `<uid>`. This produces `data/{upName}/{uid}.json` and `data/{upName}/{uid}.csv` with full metadata including like/coin/favorite statistics and, in JSON, collection metadata.
+- Save the complete structured list (JSON + CSV) with `export <uid>`. Can use `--name <name>` instead of `<uid>`. This produces `data/{upName}/{uid}_{savedAt}.json` and `.csv` with full metadata including like/coin/favorite statistics and, in JSON, collection metadata. `savedAt` is the Beijing save time (`YYYYMMDD_HHmmss_SSS`); paired files share the same stem, and collisions append a numeric suffix. Preserve historical snapshots and select the newest snapshot per UID when a current export is needed.
 - Inspect one video with `info <bvid>`.
 - Download one video with `download <bvid>`; add `--audio` only when the user requests audio-only output.
+- `info` and `download` accept a BVID, not a full URL. Extract the BVID from a user-provided `/video/<BVID>` link before invoking the CLI; pass `?p=N` as `--page N` when that part is requested. `npx bili download <bvid> --audio` and `node bin/bili.js download <bvid> --audio` are equivalent entry points from the repository root.
 - Download the first N videos from an UP creator with `batch <uid> --limit <N>`; can use `--name <name>` instead of `<uid>`. Add `--audio` for audio-only output.
 - For keywords, user-edited selections, or JSON/CSV input files, select BVIDs before downloading. Use `export` as the primary data source.
 - Use `scripts/download-artist.mjs` only when its hard-coded data source and audio-only behavior match the request exactly. Do not silently edit it for another UID.
@@ -130,7 +131,7 @@ Bilibili-Evolved 源代码依据 [MIT License](https://github.com/the1812/Bilibi
 
 ## Notes
 
-- `export` always performs a full refresh — every run re-fetches all video details and overwrites `data/{upName}/{uid}.json` and `data/{upName}/{uid}.csv`.
+- `export` always performs a full refresh: every run re-fetches all video details and creates a new JSON/CSV snapshot named with the Beijing save time, preserving earlier snapshots.
 - The `list` command is terminal-only preview and does not generate files.
 
 ## Preserve User Data

@@ -174,6 +174,7 @@ flowchart TD
 ```bash
 npx bili info BV1nJBLBuEWQ
 npx bili info BV1nJBLBuEWQ --json          # JSON 格式输出
+node bin/bili.js info BV1nJBLBuEWQ
 ```
 
 显示视频标题、UP 主、时长、分P、可用视频流（分辨率/编码/码率）和音频流（FLAC/Dolby/AAC）。
@@ -190,13 +191,19 @@ npx bili download BV1nJBLBuEWQ
 
 ```bash
 npx bili download BV1nJBLBuEWQ --audio
+node bin/bili.js download BV1nJBLBuEWQ --audio
 ```
 
 指定分P：
 
 ```bash
 npx bili download BV1nJBLBuEWQ --page 2
+node bin/bili.js download BV1nJBLBuEWQ --page 2
 ```
+
+在项目根目录运行上述命令。`npx bili` 和 `node bin/bili.js` 是两种等效入口，调用相同的本地下载代码。
+
+`info` 和 `download` 的参数是 **BVID，不是完整链接**。例如，从 `https://www.bilibili.com/video/BV1jg25YxEqz/` 中取出 `BV1jg25YxEqz`。链接带 `?p=2` 时，用 `--page 2` 指定分 P；默认下载第 1 P。直接把完整链接传给命令会导致 `/x/web-interface/view` 返回“请求错误”，应改为传入 BVID。
 
 #### 普通视频、多 P 与合集的链接和目录关系
 
@@ -686,5 +693,5 @@ ffmpeg -i input.eac3 -c:a flac output.flac
 - **重试机制**：`fetchWithRetry()` 对 ECONNRESET / ETIMEDOUT / socket 错误自动重试 3 次，指数退避
 - **容器 vs 编码**：DASH 音频流的 `.m4s` 文件实际是 MP4 容器（ISO Base Media），文件扩展名根据内部编码类型决定（`.flac` / `.m4a` / `.eac3` / `.ac3`）
 - **ffmpeg 合并**：FLAC 音频流合并输出 MKV 容器（MP4 不支持 FLAC），其余编码输出 MP4；合并参数 `-c copy` 无损，不解码重编码
-- **全量刷新**：`export` 命令每次运行都重新获取全部视频详情，JSON 和 CSV 完全覆盖，确保数据最新
+- **全量快照**：`export` 命令每次运行都重新获取全部视频详情，以北京时间保存时间命名同批 JSON 和 CSV，保留历史文件供新旧对比
 - **视频列表获取**：空间视频列表通过 Playwright 浏览器访问 UP 主页，拦截 `x/space/wbi/arc/search` 响应获取完整列表，自动翻页滚动加载
